@@ -38,10 +38,7 @@ function init() {
 
 function initMap() {
   state.map = L.map("map").setView([state.userLocation.lat, state.userLocation.lon], 14);
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-  }).addTo(state.map);
+  mountBaseLayerWithFallback();
   state.map.on("popupopen", (event) => {
     const btn = event.popup.getElement()?.querySelector("button[data-favorite-id]");
     if (!btn) {
@@ -53,6 +50,61 @@ function initMap() {
       focusCourt(targetId);
     });
   });
+}
+
+function mountBaseLayerWithFallback() {
+  const providers = [
+    {
+      name: "Amap",
+      url: "https://webrd0{s}.is.autonavi.com/appmaptile?style=8&x={x}&y={y}&z={z}",
+      options: {
+        subdomains: ["1", "2", "3", "4"],
+        maxZoom: 19,
+        attribution: "Map data © AutoNavi",
+      },
+    },
+    {
+      name: "OSM",
+      url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+      options: {
+        maxZoom: 19,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      },
+    },
+  ];
+
+  let activeLayer = null;
+  let providerIndex = 0;
+  let errorCount = 0;
+  const maxErrorsBeforeFallback = 6;
+
+  const loadProvider = () => {
+    if (providerIndex >= providers.length) {
+      setStatus("地图底图加载失败，已保留点位列表与定位功能。");
+      return;
+    }
+    const provider = providers[providerIndex];
+    if (activeLayer) {
+      state.map.removeLayer(activeLayer);
+    }
+    errorCount = 0;
+    activeLayer = L.tileLayer(provider.url, provider.options).addTo(state.map);
+
+    activeLayer.on("tileerror", () => {
+      errorCount += 1;
+      if (errorCount >= maxErrorsBeforeFallback) {
+        providerIndex += 1;
+        setStatus(`底图源 ${provider.name} 不可达，切换备用底图中...`);
+        loadProvider();
+      }
+    });
+
+    activeLayer.on("load", () => {
+      setStatus(`底图加载成功（${provider.name}）。`);
+    });
+  };
+
+  loadProvider();
 }
 
 function bindEvents() {
