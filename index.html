@@ -4,12 +4,6 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>附近羽毛球场动态地图</title>
-    <link
-      rel="stylesheet"
-      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
-      crossorigin=""
-    />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
@@ -29,6 +23,13 @@
         <section class="card">
           <h2>筛选</h2>
           <label class="field">
+            高德 JS 地图 Key
+            <div class="row">
+              <input id="mapKeyInput" type="text" placeholder="仅用于前端底图渲染" />
+              <button id="saveMapKeyBtn" type="button">保存</button>
+            </div>
+          </label>
+          <label class="field">
             搜索半径
             <div class="row">
               <input id="radiusInput" type="range" min="1000" max="10000" step="500" value="3000" />
@@ -39,9 +40,7 @@
             <input id="favoritesOnly" type="checkbox" />
             只看已收藏
           </label>
-          <p class="hint">
-            说明：建议使用本地代理服务安全接入高德 Key。营业与预约状态会按分钟动态刷新；若无官方接口时，展示智能估算值。
-          </p>
+          <p class="hint">说明：前端地图使用高德 JS SDK，场馆数据优先通过后端代理获取，营业与预约状态按分钟动态刷新。</p>
         </section>
 
         <section class="card">
@@ -71,11 +70,6 @@
       </li>
     </template>
 
-    <script
-      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-      crossorigin=""
-    ></script>
     <script src="./app.js"></script>
   </body>
 </html>

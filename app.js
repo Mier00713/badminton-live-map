@@ -1,5 +1,6 @@
 const DEFAULT_CENTER = { lat: 31.2304, lon: 121.4737 };
 const FAVORITES_KEY = "badminton-favorites-v1";
+const MAP_KEY_STORAGE = "badminton-map-js-key";
 const REFRESH_INTERVAL_MS = 60 * 1000;
 const OVERPASS_ENDPOINTS = [
   "https://overpass-api.de/api/interpreter",
@@ -13,6 +14,7 @@ const state = {
   radius: 3000,
   courts: [],
   markerMap: new Map(),
+  infoWindow: null,
   favorites: new Set(loadFavorites()),
   showFavoritesOnly: false,
 };
@@ -25,166 +27,37 @@ const favoritesOnlyInput = document.querySelector("#favoritesOnly");
 const loadingText = document.querySelector("#loadingText");
 const courtList = document.querySelector("#courtList");
 const itemTemplate = document.querySelector("#courtItemTemplate");
+const mapKeyInput = document.querySelector("#mapKeyInput");
+const saveMapKeyBtn = document.querySelector("#saveMapKeyBtn");
 
 init();
 
-function init() {
-  initMap();
+async function init() {
   bindEvents();
   updateRadiusText();
-  locateUserAndRefresh();
+  initMapKeyInput();
+  const ready = await initMapEngine();
+  if (!ready) {
+    return;
+  }
+  await locateUserAndRefresh();
   window.setInterval(refreshStatusesOnly, REFRESH_INTERVAL_MS);
-}
-
-function initMap() {
-  state.map = L.map("map").setView([state.userLocation.lat, state.userLocation.lon], 14);
-  mountBaseLayerWithFallback();
-  state.map.on("popupopen", (event) => {
-    const btn = event.popup.getElement()?.querySelector("button[data-favorite-id]");
-    if (!btn) {
-      return;
-    }
-    btn.addEventListener("click", () => {
-      const targetId = btn.getAttribute("data-favorite-id");
-      toggleFavorite(targetId);
-      focusCourt(targetId);
-    });
-  });
-}
-
-function mountBaseLayerWithFallback() {
-  const providers = [
-    {
-      name: "AmapVector",
-      url: "https://wprd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&style=7&x={x}&y={y}&z={z}",
-      options: {
-        subdomains: ["1", "2", "3", "4"],
-        maxZoom: 19,
-        attribution: "Map data © AutoNavi",
-      },
-    },
-    {
-      name: "AmapRoad",
-      url: "https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&style=8&x={x}&y={y}&z={z}",
-      options: {
-        subdomains: ["1", "2", "3", "4"],
-        maxZoom: 19,
-        attribution: "Map data © AutoNavi",
-      },
-    },
-    {
-      name: "Tencent",
-      url: "https://rt{s}.map.gtimg.com/realtimerender?z={z}&x={x}&y={y}&type=vector&style=0",
-      options: {
-        subdomains: ["0", "1", "2", "3"],
-        maxZoom: 19,
-        attribution: "Map data © Tencent",
-      },
-    },
-    {
-      name: "OSM",
-      url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-      options: {
-        maxZoom: 19,
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-      },
-    },
-    {
-      name: "Carto",
-      url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
-      options: {
-        subdomains: "abcd",
-        maxZoom: 19,
-        attribution: "&copy; OpenStreetMap contributors &copy; CARTO",
-      },
-    },
-    {
-      name: "GeoQ",
-      url: "https://map.geoq.cn/ArcGIS/rest/services/ChinaOnlineCommunity/MapServer/tile/{z}/{y}/{x}",
-      options: {
-        maxZoom: 18,
-        attribution: "Map data © GeoQ",
-      },
-    },
-    {
-      name: "LocalGrid",
-      isLocalGrid: true,
-      options: {
-        attribution: "Local fallback grid",
-      },
-    },
-  ];
-
-  let activeLayer = null;
-  let providerIndex = 0;
-  let errorCount = 0;
-  const maxErrorsBeforeFallback = 4;
-
-  const loadProvider = () => {
-    if (providerIndex >= providers.length) {
-      setStatus("地图底图加载失败，已保留点位列表与定位功能。");
-      return;
-    }
-    const provider = providers[providerIndex];
-    if (activeLayer) {
-      state.map.removeLayer(activeLayer);
-    }
-    errorCount = 0;
-    activeLayer = provider.isLocalGrid
-      ? createLocalGridLayer(provider.options).addTo(state.map)
-      : L.tileLayer(provider.url, provider.options).addTo(state.map);
-
-    activeLayer.on("tileerror", () => {
-      errorCount += 1;
-      if (errorCount >= maxErrorsBeforeFallback) {
-        providerIndex += 1;
-        setStatus(`底图源 ${provider.name} 不可达，切换备用底图中...`);
-        loadProvider();
-      }
-    });
-
-    activeLayer.on("load", () => {
-      setStatus(`底图加载成功（${provider.name}）。`);
-    });
-  };
-
-  loadProvider();
-}
-
-function createLocalGridLayer(options = {}) {
-  const grid = L.gridLayer(options);
-  grid.createTile = (coords) => {
-    const tile = document.createElement("canvas");
-    const size = grid.getTileSize();
-    tile.width = size.x;
-    tile.height = size.y;
-
-    const ctx = tile.getContext("2d");
-    ctx.fillStyle = "#f3f4f6";
-    ctx.fillRect(0, 0, size.x, size.y);
-    ctx.strokeStyle = "#d1d5db";
-    ctx.lineWidth = 1;
-    ctx.strokeRect(0, 0, size.x, size.y);
-
-    ctx.beginPath();
-    ctx.moveTo(0, size.y / 2);
-    ctx.lineTo(size.x, size.y / 2);
-    ctx.moveTo(size.x / 2, 0);
-    ctx.lineTo(size.x / 2, size.y);
-    ctx.strokeStyle = "#e5e7eb";
-    ctx.stroke();
-
-    ctx.fillStyle = "#6b7280";
-    ctx.font = "12px sans-serif";
-    ctx.fillText(`z${coords.z} x${coords.x} y${coords.y}`, 12, 20);
-    return tile;
-  };
-  return grid;
 }
 
 function bindEvents() {
   locateBtn.addEventListener("click", locateUserAndRefresh);
   refreshBtn.addEventListener("click", () => refreshNearbyCourts(true));
+  saveMapKeyBtn.addEventListener("click", () => {
+    const value = mapKeyInput.value.trim();
+    if (!value) {
+      localStorage.removeItem(MAP_KEY_STORAGE);
+      setStatus("已清空高德 JS Key。");
+      return;
+    }
+    localStorage.setItem(MAP_KEY_STORAGE, value);
+    setStatus("高德 JS Key 已保存，正在重载地图...");
+    window.location.reload();
+  });
   radiusInput.addEventListener("input", (event) => {
     state.radius = Number(event.target.value);
     updateRadiusText();
@@ -197,6 +70,66 @@ function bindEvents() {
   });
 }
 
+function initMapKeyInput() {
+  mapKeyInput.value = getMapJsKey();
+}
+
+async function initMapEngine() {
+  const mapKey = getMapJsKey();
+  if (!mapKey) {
+    setStatus("请先填写“高德 JS 地图 Key”并保存。");
+    return false;
+  }
+  try {
+    const AMap = await loadAmapSdk(mapKey);
+    state.map = new AMap.Map("map", {
+      center: [state.userLocation.lon, state.userLocation.lat],
+      zoom: 14,
+      viewMode: "2D",
+      resizeEnable: true,
+    });
+    state.infoWindow = new AMap.InfoWindow({ offset: new AMap.Pixel(0, -30) });
+    state.map.addControl(
+      new AMap.ToolBar({
+        position: { top: "10px", right: "10px" },
+      })
+    );
+    setStatus("高德地图引擎加载完成。");
+    return true;
+  } catch (error) {
+    console.error(error);
+    setStatus("高德地图引擎加载失败，请检查 JS Key 与域名白名单。");
+    return false;
+  }
+}
+
+function loadAmapSdk(key) {
+  if (window.AMap && window.AMap.Map) {
+    return Promise.resolve(window.AMap);
+  }
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector('script[data-sdk="amap-js"]');
+    if (existing) {
+      existing.addEventListener("load", () => resolve(window.AMap));
+      existing.addEventListener("error", () => reject(new Error("高德 JS SDK 加载失败")));
+      return;
+    }
+    const script = document.createElement("script");
+    script.dataset.sdk = "amap-js";
+    script.src = `https://webapi.amap.com/maps?v=2.0&key=${encodeURIComponent(key)}&plugin=AMap.ToolBar`;
+    script.async = true;
+    script.onload = () => {
+      if (window.AMap?.Map) {
+        resolve(window.AMap);
+      } else {
+        reject(new Error("高德 JS SDK 未就绪"));
+      }
+    };
+    script.onerror = () => reject(new Error("高德 JS SDK 网络加载失败"));
+    document.head.append(script);
+  });
+}
+
 function updateRadiusText() {
   radiusText.textContent = `${(state.radius / 1000).toFixed(1)} km`;
 }
@@ -204,8 +137,10 @@ function updateRadiusText() {
 async function locateUserAndRefresh() {
   const location = await getUserLocation();
   state.userLocation = location;
-  state.map.setView([location.lat, location.lon], 14);
-  refreshNearbyCourts(false);
+  if (state.map) {
+    state.map.setZoomAndCenter(14, [location.lon, location.lat]);
+  }
+  await refreshNearbyCourts(false);
 }
 
 function getUserLocation() {
@@ -216,12 +151,7 @@ function getUserLocation() {
       return;
     }
     navigator.geolocation.getCurrentPosition(
-      (position) => {
-        resolve({
-          lat: position.coords.latitude,
-          lon: position.coords.longitude,
-        });
-      },
+      (position) => resolve({ lat: position.coords.latitude, lon: position.coords.longitude }),
       () => {
         setStatus("定位失败，已使用默认城市中心。");
         resolve({ ...DEFAULT_CENTER });
@@ -237,14 +167,12 @@ async function refreshNearbyCourts(fromManualAction) {
     const rawCourts = await fetchNearbyCourts(state.userLocation, state.radius);
     state.courts = enrichCourtData(rawCourts);
     renderAll();
-    const message = fromManualAction ? "数据刷新完成。" : `已加载 ${state.courts.length} 个场馆。`;
-    setStatus(message);
+    setStatus(fromManualAction ? "数据刷新完成。" : `已加载 ${state.courts.length} 个场馆。`);
   } catch (error) {
     console.error(error);
-    const fallback = buildFallbackCourts(state.userLocation);
-    state.courts = enrichCourtData(fallback);
+    state.courts = enrichCourtData(buildFallbackCourts(state.userLocation));
     renderAll();
-    setStatus("地图接口繁忙，已切换为离线示例数据。可稍后点“立即刷新”重试。");
+    setStatus("地图接口繁忙，已切换离线示例数据。");
   }
 }
 
@@ -253,8 +181,29 @@ async function fetchNearbyCourts(location, radius) {
   if (amapCourts.length > 0) {
     return amapCourts;
   }
+  return fetchNearbyCourtsFromOverpass(location, radius);
+}
 
-  const overpassQuery = `
+async function fetchNearbyCourtsFromProxy(location, radius) {
+  const params = new URLSearchParams({
+    lat: String(location.lat),
+    lon: String(location.lon),
+    radius: String(radius),
+  });
+  const response = await fetchWithTimeout(`/api/amap/around?${params.toString()}`, { method: "GET" }, 10000);
+  if (!response.ok) {
+    return [];
+  }
+  const data = await response.json();
+  if (data.status !== "ok") {
+    return [];
+  }
+  const pois = Array.isArray(data.pois) ? data.pois : [];
+  return normalizeAmapCourts(pois, location);
+}
+
+async function fetchNearbyCourtsFromOverpass(location, radius) {
+  const query = `
 [out:json][timeout:20];
 (
   node(around:${radius},${location.lat},${location.lon})["sport"="badminton"];
@@ -265,85 +214,54 @@ async function fetchNearbyCourts(location, radius) {
   relation(around:${radius},${location.lat},${location.lon})["leisure"="sports_centre"]["name"~"羽毛球|badminton",i];
 );
 out center tags;
-`;
-  const query = overpassQuery.trim();
+`.trim();
   const errors = [];
   for (const endpoint of OVERPASS_ENDPOINTS) {
     try {
-      const response = await fetchWithTimeout(`${endpoint}?data=${encodeURIComponent(query)}`, {
-        method: "GET",
-        headers: { Accept: "application/json" },
-      });
+      const response = await fetchWithTimeout(`${endpoint}?data=${encodeURIComponent(query)}`, { method: "GET" }, 10000);
       if (!response.ok) {
-        errors.push(`${endpoint}: HTTP ${response.status}`);
+        errors.push(`${endpoint}: ${response.status}`);
         continue;
       }
       const data = await response.json();
-      const normalized = normalizeCourts(data.elements, location);
-      if (normalized.length > 0) {
-        return normalized;
+      const list = normalizeCourts(data.elements, location);
+      if (list.length > 0) {
+        return list;
       }
       errors.push(`${endpoint}: empty`);
     } catch (error) {
       errors.push(`${endpoint}: ${error.message}`);
     }
   }
-  throw new Error(`所有地图接口请求失败: ${errors.join(" | ")}`);
-}
-
-async function fetchNearbyCourtsFromProxy(location, radius) {
-  const params = new URLSearchParams({
-    lat: String(location.lat),
-    lon: String(location.lon),
-    radius: String(radius),
-  });
-  const url = `/api/amap/around?${params.toString()}`;
-  const response = await fetchWithTimeout(url, { method: "GET" }, 10000);
-  if (response.status === 404) {
-    return [];
-  }
-  if (!response.ok) {
-    throw new Error(`本地代理请求失败: ${response.status}`);
-  }
-  const data = await response.json();
-  if (data.status === "proxy_unconfigured") {
-    return [];
-  }
-  if (data.status !== "ok") {
-    throw new Error(data.message || "代理接口错误");
-  }
-  const pois = Array.isArray(data.pois) ? data.pois : [];
-  return normalizeAmapCourts(pois, location);
+  throw new Error(`Overpass全部失败: ${errors.join(" | ")}`);
 }
 
 function normalizeAmapCourts(pois, userLocation) {
-  const list = [];
-  for (const poi of pois) {
-    const [lonText, latText] = String(poi.location || "").split(",");
-    const lon = Number(lonText);
-    const lat = Number(latText);
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-      continue;
-    }
-    const id = `amap-${poi.id || hashString(`${poi.name}-${lat}-${lon}`)}`;
-    const distance = calcDistance(userLocation.lat, userLocation.lon, lat, lon);
-    list.push({
-      id,
-      name: poi.name || "未命名羽毛球场",
-      lat,
-      lon,
-      address: poi.address || poi.pname || "暂无详细地址",
-      distance,
-      source: "Amap",
-    });
-  }
-  return list.sort((a, b) => a.distance - b.distance);
+  return pois
+    .map((poi) => {
+      const [lonText, latText] = String(poi.location || "").split(",");
+      const lon = Number(lonText);
+      const lat = Number(latText);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+        return null;
+      }
+      return {
+        id: `amap-${poi.id || hashString(`${poi.name}-${lat}-${lon}`)}`,
+        name: poi.name || "未命名羽毛球场",
+        lat,
+        lon,
+        address: poi.address || poi.pname || "暂无详细地址",
+        distance: calcDistance(userLocation.lat, userLocation.lon, lat, lon),
+        source: "Amap",
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.distance - b.distance);
 }
 
 function normalizeCourts(elements, userLocation) {
-  const list = [];
   const seen = new Set();
-
+  const list = [];
   for (const element of elements || []) {
     const lat = element.lat ?? element.center?.lat;
     const lon = element.lon ?? element.center?.lon;
@@ -355,30 +273,22 @@ function normalizeCourts(elements, userLocation) {
       continue;
     }
     seen.add(id);
-    const name = element.tags?.name || "未命名羽毛球场";
-    const distance = calcDistance(userLocation.lat, userLocation.lon, lat, lon);
     list.push({
       id,
-      name,
+      name: element.tags?.name || "未命名羽毛球场",
       lat,
       lon,
       address: formatAddress(element.tags),
-      distance,
+      distance: calcDistance(userLocation.lat, userLocation.lon, lat, lon),
       source: "OpenStreetMap",
     });
   }
-
   return list.sort((a, b) => a.distance - b.distance).slice(0, 80);
 }
 
 function formatAddress(tags = {}) {
-  const parts = [
-    tags["addr:city"],
-    tags["addr:district"],
-    tags["addr:street"],
-    tags["addr:housenumber"],
-  ].filter(Boolean);
-  return parts.length ? parts.join("") : "暂无详细地址";
+  const parts = [tags["addr:city"], tags["addr:district"], tags["addr:street"], tags["addr:housenumber"]].filter(Boolean);
+  return parts.length > 0 ? parts.join("") : "暂无详细地址";
 }
 
 function enrichCourtData(courts) {
@@ -386,16 +296,13 @@ function enrichCourtData(courts) {
   const minuteKey = `${now.getHours()}:${now.getMinutes()}`;
   return courts.map((court) => {
     const seed = hashString(`${court.id}-${minuteKey}`);
-    const isOpenHour = now.getHours() >= 7 && now.getHours() <= 22;
     const occupiedRatio = 0.35 + (seed % 55) / 100;
-    const freeSlots = Math.max(0, Math.round((1 - occupiedRatio) * 12));
-    const reserving = Math.round(occupiedRatio * 36);
     return {
       ...court,
-      isOpen: isOpenHour,
+      isOpen: now.getHours() >= 7 && now.getHours() <= 22,
       occupiedRatio,
-      freeSlots,
-      reserving,
+      freeSlots: Math.max(0, Math.round((1 - occupiedRatio) * 12)),
+      reserving: Math.round(occupiedRatio * 36),
       updatedAt: now.toLocaleTimeString("zh-CN", { hour12: false }),
     };
   });
@@ -417,11 +324,13 @@ function renderAll() {
 }
 
 function renderMarkers() {
-  const ids = new Set(state.courts.map((item) => item.id));
-
+  if (!state.map || !window.AMap) {
+    return;
+  }
+  const visibleIds = new Set(state.courts.map((item) => item.id));
   for (const [id, marker] of state.markerMap.entries()) {
-    if (!ids.has(id)) {
-      marker.remove();
+    if (!visibleIds.has(id)) {
+      marker.setMap(null);
       state.markerMap.delete(id);
     }
   }
@@ -429,28 +338,49 @@ function renderMarkers() {
   for (const court of state.courts) {
     let marker = state.markerMap.get(court.id);
     if (!marker) {
-      marker = L.marker([court.lat, court.lon], { title: court.name });
-      marker.addTo(state.map);
-      marker.on("click", () => marker.openPopup());
+      marker = new AMap.Marker({
+        position: [court.lon, court.lat],
+        title: court.name,
+      });
+      marker.on("click", () => openCourtInfo(court.id));
+      marker.setMap(state.map);
       state.markerMap.set(court.id, marker);
     } else {
-      marker.setLatLng([court.lat, court.lon]);
+      marker.setPosition([court.lon, court.lat]);
+      marker.setTitle(court.name);
     }
-    marker.bindPopup(buildPopupHtml(court), { minWidth: 250 });
   }
+}
+
+function openCourtInfo(courtId) {
+  const court = state.courts.find((item) => item.id === courtId);
+  const marker = state.markerMap.get(courtId);
+  if (!court || !marker || !state.infoWindow) {
+    return;
+  }
+  state.infoWindow.setContent(buildPopupHtml(court));
+  state.infoWindow.open(state.map, marker.getPosition());
+  window.setTimeout(() => {
+    const btn = document.querySelector("#popupFavoriteBtn");
+    if (!btn) {
+      return;
+    }
+    btn.onclick = () => {
+      toggleFavorite(courtId);
+      openCourtInfo(courtId);
+    };
+  }, 0);
 }
 
 function buildPopupHtml(court) {
   const favoriteText = state.favorites.has(court.id) ? "已收藏" : "收藏";
-  const openText = court.isOpen ? "营业中" : "已休息";
-  const navUrl = buildNavigationUrl(court);
   return `
     <h3 class="popup-name">${escapeHtml(court.name)}</h3>
     <p class="popup-meta">${escapeHtml(court.address)} · ${(court.distance / 1000).toFixed(2)} km</p>
-    <p class="popup-status">${openText} | 预约中 ${court.reserving} 人 | 可约场地 ${court.freeSlots} | 更新时间 ${court.updatedAt}</p>
+    <p class="popup-status">${court.isOpen ? "营业中" : "已休息"} | 预约中 ${court.reserving} 人 | 可约场地 ${court.freeSlots} | 更新时间 ${court.updatedAt}</p>
     <div class="popup-actions">
-      <a href="${navUrl}" target="_blank" rel="noopener noreferrer">导航</a>
-      <button type="button" data-favorite-id="${court.id}">${favoriteText}</button>
+      <a href="${buildNavigationUrl(court)}" target="_blank" rel="noopener noreferrer">导航</a>
+      <button id="popupFavoriteBtn" type="button">${favoriteText}</button>
     </div>
   `;
 }
@@ -465,7 +395,6 @@ function renderCourtList() {
     courtList.append(empty);
     return;
   }
-
   const fragment = document.createDocumentFragment();
   for (const court of visibleCourts) {
     const item = itemTemplate.content.firstElementChild.cloneNode(true);
@@ -483,7 +412,6 @@ function renderCourtList() {
     nameEl.textContent = court.name;
     metaEl.textContent = `${court.address} · ${(court.distance / 1000).toFixed(2)} km`;
     statusEl.textContent = `${court.isOpen ? "营业中" : "已休息"} | 预约中 ${court.reserving} 人 | 可约 ${court.freeSlots} 片`;
-
     favBtn.addEventListener("click", () => toggleFavorite(court.id));
     focusBtn.addEventListener("click", () => focusCourt(court.id));
     navBtn.addEventListener("click", () => window.open(buildNavigationUrl(court), "_blank", "noopener"));
@@ -493,21 +421,16 @@ function renderCourtList() {
 }
 
 function getVisibleCourts() {
-  if (!state.showFavoritesOnly) {
-    return state.courts;
-  }
-  return state.courts.filter((court) => state.favorites.has(court.id));
+  return state.showFavoritesOnly ? state.courts.filter((court) => state.favorites.has(court.id)) : state.courts;
 }
 
 function syncMarkerVisibility() {
   const visibleIds = new Set(getVisibleCourts().map((court) => court.id));
   for (const [id, marker] of state.markerMap.entries()) {
-    const inMap = state.map.hasLayer(marker);
-    if (visibleIds.has(id) && !inMap) {
-      marker.addTo(state.map);
-    }
-    if (!visibleIds.has(id) && inMap) {
-      marker.remove();
+    if (visibleIds.has(id)) {
+      marker.show();
+    } else {
+      marker.hide();
     }
   }
 }
@@ -527,43 +450,42 @@ function toggleFavorite(courtId) {
 
 function focusCourt(courtId) {
   const court = state.courts.find((item) => item.id === courtId);
-  if (!court) {
+  if (!court || !state.map) {
     return;
   }
-  state.map.setView([court.lat, court.lon], 16);
-  const marker = state.markerMap.get(court.id);
-  if (marker) {
-    marker.openPopup();
-  }
+  state.map.setZoomAndCenter(16, [court.lon, court.lat]);
+  openCourtInfo(court.id);
 }
 
 function buildNavigationUrl(court) {
   return `https://uri.amap.com/navigation?to=${court.lon},${court.lat},${encodeURIComponent(court.name)}&mode=walk&policy=1&src=cursor-badminton-map`;
 }
 
+function getMapJsKey() {
+  const fromQuery = new URLSearchParams(window.location.search).get("mapKey");
+  if (fromQuery) {
+    return fromQuery.trim();
+  }
+  return (localStorage.getItem(MAP_KEY_STORAGE) || "").trim();
+}
+
 function loadFavorites() {
   try {
-    const raw = window.localStorage.getItem(FAVORITES_KEY);
-    if (!raw) {
-      return [];
-    }
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    const raw = localStorage.getItem(FAVORITES_KEY);
+    return raw ? JSON.parse(raw) : [];
   } catch {
     return [];
   }
 }
 
 function saveFavorites(ids) {
-  window.localStorage.setItem(FAVORITES_KEY, JSON.stringify(ids));
+  localStorage.setItem(FAVORITES_KEY, JSON.stringify(ids));
 }
 
 function fetchWithTimeout(url, options, timeoutMs = 10000) {
   const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
-  return fetch(url, { ...options, signal: controller.signal }).finally(() => {
-    window.clearTimeout(timeoutId);
-  });
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timeoutId));
 }
 
 function setStatus(message) {
@@ -598,11 +520,11 @@ function buildFallbackCourts(location) {
     { name: "晨光羽毛球俱乐部", dLat: -0.0027, dLon: -0.003, address: "附近主干道D口" },
     { name: "星跃羽球馆", dLat: 0.0051, dLon: -0.0012, address: "附近主干道E口" },
   ];
-  return presets.map((item, idx) => {
+  return presets.map((item, index) => {
     const lat = location.lat + item.dLat;
     const lon = location.lon + item.dLon;
     return {
-      id: `fallback-${idx + 1}`,
+      id: `fallback-${index + 1}`,
       name: item.name,
       lat,
       lon,
