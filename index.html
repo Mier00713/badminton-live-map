@@ -23,17 +23,6 @@
         <section class="card">
           <h2>筛选</h2>
           <label class="field">
-            高德 JS 地图 Key
-            <div class="row">
-              <input id="mapKeyInput" type="text" placeholder="仅用于前端底图渲染" />
-              <button id="saveMapKeyBtn" type="button">保存</button>
-            </div>
-          </label>
-          <label class="field">
-            高德 SecurityJsCode（可选但推荐）
-            <input id="securityCodeInput" type="text" placeholder="高德控制台安全密钥，建议填写" />
-          </label>
-          <label class="field">
             搜索半径
             <div class="row">
               <input id="radiusInput" type="range" min="1000" max="10000" step="500" value="3000" />
@@ -44,7 +33,7 @@
             <input id="favoritesOnly" type="checkbox" />
             只看已收藏
           </label>
-          <p class="hint">说明：前端地图使用高德 JS SDK，场馆数据优先通过后端代理获取，营业与预约状态按分钟动态刷新。</p>
+          <p class="hint">说明：地图配置由服务端自动下发（无需手动输入），场馆数据优先通过后端代理获取，营业与预约状态按分钟动态刷新。</p>
         </section>
 
         <section class="card">

@@ -17,10 +17,34 @@ class AppHandler(SimpleHTTPRequestHandler):
     super().__init__(*args, directory=str(Path(__file__).parent), **kwargs)
 
   def do_GET(self):
+    if self.path.startswith("/api/config/map"):
+      self.handle_map_config()
+      return
     if self.path.startswith("/api/amap/around"):
       self.handle_amap_proxy()
       return
     super().do_GET()
+
+  def handle_map_config(self):
+    map_key = os.environ.get("AMAP_JS_API_KEY", "").strip()
+    security_code = os.environ.get("AMAP_SECURITY_JS_CODE", "").strip()
+    if not map_key:
+      self.respond_json(
+        200,
+        {
+          "status": "unconfigured",
+          "message": "未配置 AMAP_JS_API_KEY。",
+        },
+      )
+      return
+    self.respond_json(
+      200,
+      {
+        "status": "ok",
+        "mapKey": map_key,
+        "securityJsCode": security_code,
+      },
+    )
 
   def handle_amap_proxy(self):
     api_key = os.environ.get("AMAP_WEB_API_KEY", "").strip()
@@ -104,5 +128,5 @@ class AppHandler(SimpleHTTPRequestHandler):
 if __name__ == "__main__":
   server = ThreadingHTTPServer((HOST, PORT), AppHandler)
   print(f"Serving at http://{HOST}:{PORT}")
-  print("请先设置环境变量 AMAP_WEB_API_KEY，再打开网页。")
+  print("请先设置环境变量 AMAP_WEB_API_KEY 和 AMAP_JS_API_KEY。")
   server.serve_forever()

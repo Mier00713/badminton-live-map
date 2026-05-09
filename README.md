@@ -19,17 +19,20 @@
 2. 打开 [Vercel](https://vercel.com/) 并导入该仓库。
 3. 在项目设置 `Environment Variables` 新增：
    - `AMAP_WEB_API_KEY` = 你的高德 Web 服务 Key
+   - `AMAP_JS_API_KEY` = 你的高德 JS 地图 Key（前端底图）
+   - `AMAP_SECURITY_JS_CODE` = 你的高德 SecurityJsCode（可选但推荐）
 4. 点击 Deploy。
 5. 部署成功后会获得一个公网域名，例如 `https://xxx.vercel.app`，手机浏览器直接打开即可。
 
-## 前端地图 Key 设置（重要）
+## 自动配置说明（任何设备免输入）
 
-由于高德 JS SDK 在浏览器侧加载，页面首次打开时请在左侧输入：
+页面会在加载时请求 `/api/config/map`，由服务端下发地图配置：
 
-- `高德 JS 地图 Key`（建议与高德 Web 服务 Key 分开申请）
-- `高德 SecurityJsCode`（推荐填写，部分新 Key 必需）
+- `AMAP_JS_API_KEY`
+- `AMAP_SECURITY_JS_CODE`（可选）
 
-点“保存”后会自动重载地图。请在高德控制台把该 Key 的白名单配置为你的站点域名（如 `*.pages.dev`）。
+因此同一个线上地址在任何设备打开都不需要手动输入 Key。  
+请在高德控制台把 JS Key 的白名单配置为你的站点域名（如 `*.pages.dev`）。
 
 ## 本地调试（可选）
 
@@ -45,6 +48,8 @@ cd "/Users/dell1/Applications/cursor项目/ab/badminton-live-map"
 
 ```bash
 export AMAP_WEB_API_KEY="你的高德Web服务Key"
+export AMAP_JS_API_KEY="你的高德JS地图Key"
+export AMAP_SECURITY_JS_CODE="你的高德SecurityJsCode"
 ```
 
 3. 启动本地代理服务：
@@ -60,4 +65,4 @@ python3 server.py
 - 场馆位置数据优先来自高德（通过后端代理接口 `/api/amap/around`），失败时自动回退 OpenStreetMap/Overpass，再失败使用离线示例数据。
 - 由于多数场馆没有公开预约 API，页面中的“营业/预约”状态为动态估算值（按分钟刷新），可替换为你的真实业务接口。
 - 收藏数据存储在 `localStorage`，不会上传服务器。
-- 场馆查询 Key 可保存在服务端环境变量；JS 地图渲染 Key 需在前端加载（请务必配置域名白名单与配额限制）。
+- 场馆查询 Key 与地图 Key 都在服务端环境变量管理，避免每台设备单独录入。

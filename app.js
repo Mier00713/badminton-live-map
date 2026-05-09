@@ -1,7 +1,5 @@
 const DEFAULT_CENTER = { lat: 31.2304, lon: 121.4737 };
 const FAVORITES_KEY = "badminton-favorites-v1";
-const MAP_KEY_STORAGE = "badminton-map-js-key";
-const MAP_SECURITY_CODE_STORAGE = "badminton-map-security-code";
 const REFRESH_INTERVAL_MS = 60 * 1000;
 const OVERPASS_ENDPOINTS = [
   "https://overpass-api.de/api/interpreter",
@@ -16,6 +14,7 @@ const state = {
   courts: [],
   markerMap: new Map(),
   infoWindow: null,
+  mapRuntimeConfig: null,
   favorites: new Set(loadFavorites()),
   showFavoritesOnly: false,
 };
@@ -28,16 +27,13 @@ const favoritesOnlyInput = document.querySelector("#favoritesOnly");
 const loadingText = document.querySelector("#loadingText");
 const courtList = document.querySelector("#courtList");
 const itemTemplate = document.querySelector("#courtItemTemplate");
-const mapKeyInput = document.querySelector("#mapKeyInput");
-const saveMapKeyBtn = document.querySelector("#saveMapKeyBtn");
-const securityCodeInput = document.querySelector("#securityCodeInput");
 
 init();
 
 async function init() {
   bindEvents();
   updateRadiusText();
-  initMapKeyInput();
+  await loadMapRuntimeConfig();
   const ready = await initMapEngine();
   if (!ready) {
     return;
@@ -49,24 +45,6 @@ async function init() {
 function bindEvents() {
   locateBtn.addEventListener("click", locateUserAndRefresh);
   refreshBtn.addEventListener("click", () => refreshNearbyCourts(true));
-  saveMapKeyBtn.addEventListener("click", () => {
-    const keyValue = mapKeyInput.value.trim();
-    const securityValue = securityCodeInput.value.trim();
-    if (!keyValue) {
-      localStorage.removeItem(MAP_KEY_STORAGE);
-      localStorage.removeItem(MAP_SECURITY_CODE_STORAGE);
-      setStatus("已清空高德 JS Key。");
-      return;
-    }
-    localStorage.setItem(MAP_KEY_STORAGE, keyValue);
-    if (securityValue) {
-      localStorage.setItem(MAP_SECURITY_CODE_STORAGE, securityValue);
-    } else {
-      localStorage.removeItem(MAP_SECURITY_CODE_STORAGE);
-    }
-    setStatus("高德 JS Key 已保存，正在重载地图...");
-    window.location.reload();
-  });
   radiusInput.addEventListener("input", (event) => {
     state.radius = Number(event.target.value);
     updateRadiusText();
@@ -79,19 +57,14 @@ function bindEvents() {
   });
 }
 
-function initMapKeyInput() {
-  mapKeyInput.value = getMapJsKey();
-  securityCodeInput.value = getMapSecurityCode();
-}
-
 async function initMapEngine() {
-  const mapKey = getMapJsKey();
+  const mapKey = state.mapRuntimeConfig?.mapKey;
   if (!mapKey) {
-    setStatus("请先填写“高德 JS 地图 Key”并保存。");
+    setStatus("服务端未下发高德 JS 地图配置，请联系管理员设置环境变量。");
     return false;
   }
   try {
-    const AMap = await loadAmapSdk(mapKey, getMapSecurityCode());
+    const AMap = await loadAmapSdk(mapKey, state.mapRuntimeConfig?.securityJsCode);
     const baseLayer = new AMap.TileLayer();
     const roadLayer = new AMap.TileLayer.RoadNet();
     state.map = new AMap.Map("map", {
@@ -114,6 +87,42 @@ async function initMapEngine() {
     console.error(error);
     setStatus("高德地图引擎加载失败，请检查 JS Key 与域名白名单。");
     return false;
+  }
+}
+
+async function loadMapRuntimeConfig() {
+  const params = new URLSearchParams(window.location.search);
+  const queryMapKey = (params.get("mapKey") || "").trim();
+  const querySecurityCode = (params.get("securityJsCode") || "").trim();
+  if (queryMapKey) {
+    state.mapRuntimeConfig = {
+      mapKey: queryMapKey,
+      securityJsCode: querySecurityCode,
+      source: "query",
+    };
+    setStatus("已从 URL 参数加载地图配置。");
+    return;
+  }
+
+  try {
+    const response = await fetchWithTimeout("/api/config/map", { method: "GET" }, 8000);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const payload = await response.json();
+    if (payload.status !== "ok" || !payload.mapKey) {
+      throw new Error(payload.message || "无可用地图配置");
+    }
+    state.mapRuntimeConfig = {
+      mapKey: String(payload.mapKey),
+      securityJsCode: String(payload.securityJsCode || ""),
+      source: "server",
+    };
+    setStatus("已从服务端加载地图配置。");
+  } catch (error) {
+    console.error(error);
+    state.mapRuntimeConfig = null;
+    setStatus("无法从服务端加载地图配置。");
   }
 }
 
@@ -476,22 +485,6 @@ function focusCourt(courtId) {
 
 function buildNavigationUrl(court) {
   return `https://uri.amap.com/navigation?to=${court.lon},${court.lat},${encodeURIComponent(court.name)}&mode=walk&policy=1&src=cursor-badminton-map`;
-}
-
-function getMapJsKey() {
-  const fromQuery = new URLSearchParams(window.location.search).get("mapKey");
-  if (fromQuery) {
-    return fromQuery.trim();
-  }
-  return (localStorage.getItem(MAP_KEY_STORAGE) || "").trim();
-}
-
-function getMapSecurityCode() {
-  const fromQuery = new URLSearchParams(window.location.search).get("securityJsCode");
-  if (fromQuery) {
-    return fromQuery.trim();
-  }
-  return (localStorage.getItem(MAP_SECURITY_CODE_STORAGE) || "").trim();
 }
 
 function loadFavorites() {
