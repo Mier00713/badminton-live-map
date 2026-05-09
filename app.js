@@ -71,12 +71,20 @@ function mountBaseLayerWithFallback() {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
       },
     },
+    {
+      name: "GeoQ",
+      url: "https://map.geoq.cn/ArcGIS/rest/services/ChinaOnlineCommunity/MapServer/tile/{z}/{y}/{x}",
+      options: {
+        maxZoom: 18,
+        attribution: "Map data © GeoQ",
+      },
+    },
   ];
 
   let activeLayer = null;
   let providerIndex = 0;
   let errorCount = 0;
-  const maxErrorsBeforeFallback = 6;
+  const maxErrorsBeforeFallback = 4;
 
   const loadProvider = () => {
     if (providerIndex >= providers.length) {
