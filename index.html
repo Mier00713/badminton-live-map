@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>附近羽毛球场动态地图</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="title-group">
+        <h1>附近羽毛球场动态地图</h1>
+        <p>自动收集附近场馆，并动态刷新营业与预约热度</p>
+      </div>
+      <div class="actions">
+        <button id="locateBtn" type="button">定位到我的位置</button>
+        <button id="refreshBtn" type="button">立即刷新</button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <aside class="sidebar">
+        <section class="card">
+          <h2>筛选</h2>
+          <label class="field">
+            搜索半径
+            <div class="row">
+              <input id="radiusInput" type="range" min="1000" max="10000" step="500" value="3000" />
+              <span id="radiusText">3.0 km</span>
+            </div>
+          </label>
+          <label class="field">
+            <input id="favoritesOnly" type="checkbox" />
+            只看已收藏
+          </label>
+          <p class="hint">
+            说明：建议使用本地代理服务安全接入高德 Key。营业与预约状态会按分钟动态刷新；若无官方接口时，展示智能估算值。
+          </p>
+        </section>
+
+        <section class="card">
+          <h2>场馆列表</h2>
+          <div id="loadingText" class="status">正在加载附近羽毛球场...</div>
+          <ul id="courtList" class="court-list"></ul>
+        </section>
+      </aside>
+
+      <section class="map-wrap card">
+        <div id="map" aria-label="羽毛球场地图"></div>
+      </section>
+    </main>
+
+    <template id="courtItemTemplate">
+      <li class="court-item">
+        <button type="button" class="favorite-btn" title="收藏">☆</button>
+        <div class="court-info">
+          <h3 class="court-name"></h3>
+          <p class="court-meta"></p>
+          <p class="court-status"></p>
+        </div>
+        <div class="court-actions">
+          <button type="button" class="focus-btn">地图定位</button>
+          <button type="button" class="navigate-btn">导航</button>
+        </div>
+      </li>
+    </template>
+
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
