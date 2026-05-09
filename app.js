@@ -79,6 +79,22 @@ function mountBaseLayerWithFallback() {
         attribution: "Map data © GeoQ",
       },
     },
+    {
+      name: "Carto",
+      url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+      options: {
+        subdomains: "abcd",
+        maxZoom: 19,
+        attribution: "&copy; OpenStreetMap contributors &copy; CARTO",
+      },
+    },
+    {
+      name: "LocalGrid",
+      isLocalGrid: true,
+      options: {
+        attribution: "Local fallback grid",
+      },
+    },
   ];
 
   let activeLayer = null;
@@ -96,7 +112,9 @@ function mountBaseLayerWithFallback() {
       state.map.removeLayer(activeLayer);
     }
     errorCount = 0;
-    activeLayer = L.tileLayer(provider.url, provider.options).addTo(state.map);
+    activeLayer = provider.isLocalGrid
+      ? createLocalGridLayer(provider.options).addTo(state.map)
+      : L.tileLayer(provider.url, provider.options).addTo(state.map);
 
     activeLayer.on("tileerror", () => {
       errorCount += 1;
@@ -113,6 +131,37 @@ function mountBaseLayerWithFallback() {
   };
 
   loadProvider();
+}
+
+function createLocalGridLayer(options = {}) {
+  const grid = L.gridLayer(options);
+  grid.createTile = (coords) => {
+    const tile = document.createElement("canvas");
+    const size = grid.getTileSize();
+    tile.width = size.x;
+    tile.height = size.y;
+
+    const ctx = tile.getContext("2d");
+    ctx.fillStyle = "#f3f4f6";
+    ctx.fillRect(0, 0, size.x, size.y);
+    ctx.strokeStyle = "#d1d5db";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(0, 0, size.x, size.y);
+
+    ctx.beginPath();
+    ctx.moveTo(0, size.y / 2);
+    ctx.lineTo(size.x, size.y / 2);
+    ctx.moveTo(size.x / 2, 0);
+    ctx.lineTo(size.x / 2, size.y);
+    ctx.strokeStyle = "#e5e7eb";
+    ctx.stroke();
+
+    ctx.fillStyle = "#6b7280";
+    ctx.font = "12px sans-serif";
+    ctx.fillText(`z${coords.z} x${coords.x} y${coords.y}`, 12, 20);
+    return tile;
+  };
+  return grid;
 }
 
 function bindEvents() {
