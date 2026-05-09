@@ -55,12 +55,30 @@ function initMap() {
 function mountBaseLayerWithFallback() {
   const providers = [
     {
-      name: "Amap",
-      url: "https://webrd0{s}.is.autonavi.com/appmaptile?style=8&x={x}&y={y}&z={z}",
+      name: "AmapVector",
+      url: "https://wprd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&style=7&x={x}&y={y}&z={z}",
       options: {
         subdomains: ["1", "2", "3", "4"],
         maxZoom: 19,
         attribution: "Map data © AutoNavi",
+      },
+    },
+    {
+      name: "AmapRoad",
+      url: "https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&style=8&x={x}&y={y}&z={z}",
+      options: {
+        subdomains: ["1", "2", "3", "4"],
+        maxZoom: 19,
+        attribution: "Map data © AutoNavi",
+      },
+    },
+    {
+      name: "Tencent",
+      url: "https://rt{s}.map.gtimg.com/realtimerender?z={z}&x={x}&y={y}&type=vector&style=0",
+      options: {
+        subdomains: ["0", "1", "2", "3"],
+        maxZoom: 19,
+        attribution: "Map data © Tencent",
       },
     },
     {
@@ -72,20 +90,20 @@ function mountBaseLayerWithFallback() {
       },
     },
     {
-      name: "GeoQ",
-      url: "https://map.geoq.cn/ArcGIS/rest/services/ChinaOnlineCommunity/MapServer/tile/{z}/{y}/{x}",
-      options: {
-        maxZoom: 18,
-        attribution: "Map data © GeoQ",
-      },
-    },
-    {
       name: "Carto",
       url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
       options: {
         subdomains: "abcd",
         maxZoom: 19,
         attribution: "&copy; OpenStreetMap contributors &copy; CARTO",
+      },
+    },
+    {
+      name: "GeoQ",
+      url: "https://map.geoq.cn/ArcGIS/rest/services/ChinaOnlineCommunity/MapServer/tile/{z}/{y}/{x}",
+      options: {
+        maxZoom: 18,
+        attribution: "Map data © GeoQ",
       },
     },
     {
