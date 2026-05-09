@@ -1,6 +1,7 @@
 const DEFAULT_CENTER = { lat: 31.2304, lon: 121.4737 };
 const FAVORITES_KEY = "badminton-favorites-v1";
 const MAP_KEY_STORAGE = "badminton-map-js-key";
+const MAP_SECURITY_CODE_STORAGE = "badminton-map-security-code";
 const REFRESH_INTERVAL_MS = 60 * 1000;
 const OVERPASS_ENDPOINTS = [
   "https://overpass-api.de/api/interpreter",
@@ -29,6 +30,7 @@ const courtList = document.querySelector("#courtList");
 const itemTemplate = document.querySelector("#courtItemTemplate");
 const mapKeyInput = document.querySelector("#mapKeyInput");
 const saveMapKeyBtn = document.querySelector("#saveMapKeyBtn");
+const securityCodeInput = document.querySelector("#securityCodeInput");
 
 init();
 
@@ -48,13 +50,20 @@ function bindEvents() {
   locateBtn.addEventListener("click", locateUserAndRefresh);
   refreshBtn.addEventListener("click", () => refreshNearbyCourts(true));
   saveMapKeyBtn.addEventListener("click", () => {
-    const value = mapKeyInput.value.trim();
-    if (!value) {
+    const keyValue = mapKeyInput.value.trim();
+    const securityValue = securityCodeInput.value.trim();
+    if (!keyValue) {
       localStorage.removeItem(MAP_KEY_STORAGE);
+      localStorage.removeItem(MAP_SECURITY_CODE_STORAGE);
       setStatus("已清空高德 JS Key。");
       return;
     }
-    localStorage.setItem(MAP_KEY_STORAGE, value);
+    localStorage.setItem(MAP_KEY_STORAGE, keyValue);
+    if (securityValue) {
+      localStorage.setItem(MAP_SECURITY_CODE_STORAGE, securityValue);
+    } else {
+      localStorage.removeItem(MAP_SECURITY_CODE_STORAGE);
+    }
     setStatus("高德 JS Key 已保存，正在重载地图...");
     window.location.reload();
   });
@@ -72,6 +81,7 @@ function bindEvents() {
 
 function initMapKeyInput() {
   mapKeyInput.value = getMapJsKey();
+  securityCodeInput.value = getMapSecurityCode();
 }
 
 async function initMapEngine() {
@@ -81,12 +91,16 @@ async function initMapEngine() {
     return false;
   }
   try {
-    const AMap = await loadAmapSdk(mapKey);
+    const AMap = await loadAmapSdk(mapKey, getMapSecurityCode());
+    const baseLayer = new AMap.TileLayer();
+    const roadLayer = new AMap.TileLayer.RoadNet();
     state.map = new AMap.Map("map", {
       center: [state.userLocation.lon, state.userLocation.lat],
       zoom: 14,
       viewMode: "2D",
       resizeEnable: true,
+      mapStyle: "amap://styles/normal",
+      layers: [baseLayer, roadLayer],
     });
     state.infoWindow = new AMap.InfoWindow({ offset: new AMap.Pixel(0, -30) });
     state.map.addControl(
@@ -103,7 +117,7 @@ async function initMapEngine() {
   }
 }
 
-function loadAmapSdk(key) {
+function loadAmapSdk(key, securityCode) {
   if (window.AMap && window.AMap.Map) {
     return Promise.resolve(window.AMap);
   }
@@ -113,6 +127,9 @@ function loadAmapSdk(key) {
       existing.addEventListener("load", () => resolve(window.AMap));
       existing.addEventListener("error", () => reject(new Error("高德 JS SDK 加载失败")));
       return;
+    }
+    if (securityCode) {
+      window._AMapSecurityConfig = { securityJsCode: securityCode };
     }
     const script = document.createElement("script");
     script.dataset.sdk = "amap-js";
@@ -467,6 +484,14 @@ function getMapJsKey() {
     return fromQuery.trim();
   }
   return (localStorage.getItem(MAP_KEY_STORAGE) || "").trim();
+}
+
+function getMapSecurityCode() {
+  const fromQuery = new URLSearchParams(window.location.search).get("securityJsCode");
+  if (fromQuery) {
+    return fromQuery.trim();
+  }
+  return (localStorage.getItem(MAP_SECURITY_CODE_STORAGE) || "").trim();
 }
 
 function loadFavorites() {
